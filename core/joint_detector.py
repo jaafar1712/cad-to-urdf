@@ -121,15 +121,40 @@ class JointDetector:
                           topos: List[dict]) -> List[DetectedJoint]:
         """
         Build a kinematic chain: detect joints between consecutive parts.
-        Returns a list of DetectedJoint (len = len(parts) - 1).
+        Skips self-loops and links that already have a parent.
+        Guarantees all joint names are unique.
         """
-        joints = []
+        joints: List[DetectedJoint] = []
+        used_children: set = set()   # each link may appear as child only once
+        used_names:    set = set()   # joint names must be unique
+
         for i in range(len(parts) - 1):
-            j = self.detect_joint(
-                topos[i], topos[i + 1],
-                parts[i]['name'], parts[i + 1]['name']
-            )
+            name_a = parts[i]['name']
+            name_b = parts[i + 1]['name']
+
+            if name_a == name_b:
+                log.warning(f"Skipping self-loop joint: '{name_a}' -> '{name_b}'")
+                continue
+
+            if name_b in used_children:
+                log.warning(
+                    f"Skipping joint '{name_a}'->'{name_b}': "
+                    f"'{name_b}' already has a parent"
+                )
+                continue
+
+            j = self.detect_joint(topos[i], topos[i + 1], name_a, name_b)
+
+            # Guarantee unique joint name
+            base, counter = j.name, 1
+            while j.name in used_names:
+                j.name = f"{base}_{counter}"
+                counter += 1
+
+            used_names.add(j.name)
+            used_children.add(name_b)
             joints.append(j)
+
         return joints
 
     # ------------------------------------------------------------------

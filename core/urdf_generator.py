@@ -5,6 +5,7 @@ calibrated inertial properties.
 """
 import os
 import re
+from collections import Counter
 from typing import List, Dict
 
 from lxml import etree
@@ -23,6 +24,73 @@ log = get_logger(__name__)
 
 class URDFGenerator:
 
+    def validate_before_write(self, links: List[Dict], joints: List[Dict]):
+        """
+        Check 6 structural conditions before writing anything to disk.
+        Raises ValueError with a human-readable list of all failures found.
+
+        Conditions:
+          1. No duplicate link names
+          2. No duplicate joint names (including the implicit world_to_base)
+          3. All joint parents/children reference defined links
+          4. No self-loop joint (parent == child)
+          5. Each link appears as child in at most one joint
+          6. All non-world links have positive mass
+        """
+        errors = []
+        link_names = [d['name'] for d in links]
+        all_links  = set(link_names) | {'world'}
+
+        # 1. Duplicate link names
+        dup_links = [n for n, c in Counter(link_names).items() if c > 1]
+        if dup_links:
+            errors.append(f"Duplicate link names: {dup_links}")
+
+        # 2. Duplicate joint names (world_to_base is always emitted)
+        jnames = ['world_to_base'] + [d.get('name', '') for d in joints]
+        dup_joints = [n for n, c in Counter(jnames).items() if c > 1]
+        if dup_joints:
+            errors.append(f"Duplicate joint names: {dup_joints}")
+
+        # 3. Joint parent/child must reference a defined link
+        for d in joints:
+            jn = d.get('name', '?')
+            for role in ('parent', 'child'):
+                ref = d.get(role, '')
+                if ref not in all_links:
+                    errors.append(
+                        f"Joint '{jn}' {role} '{ref}' not in link list"
+                    )
+
+        # 4. Self-loop joints
+        for d in joints:
+            if d.get('parent') == d.get('child'):
+                errors.append(
+                    f"Joint '{d.get('name')}': parent == child == '{d.get('parent')}'"
+                )
+
+        # 5. Each link may only have one parent
+        child_counts = Counter(d.get('child', '') for d in joints)
+        if links:                                       # world_to_base adds one
+            child_counts[links[0]['name']] += 1
+        multi_parent = [n for n, c in child_counts.items() if c > 1]
+        if multi_parent:
+            errors.append(f"Links with multiple parents: {multi_parent}")
+
+        # 6. Non-world links must have positive mass
+        for d in links:
+            m = d.get('mass', 0.0)
+            if m <= 0.0:
+                errors.append(
+                    f"Link '{d['name']}' has non-positive mass ({m:.6g})"
+                )
+
+        if errors:
+            raise ValueError(
+                "URDF pre-write validation failed:\n"
+                + "\n".join(f"  - {e}" for e in errors)
+            )
+
     def generate(self,
                  links: List[Dict],
                  joints: List[Dict],
@@ -36,6 +104,7 @@ class URDFGenerator:
                   limit_lower, limit_upper, effort, velocity}]
         Returns path to written URDF file.
         """
+        self.validate_before_write(links, joints)
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
         robot = etree.Element('robot', name=package_name)

@@ -86,11 +86,22 @@ class StepReader:
     # Private helpers
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _sanitize_part_name(name: str) -> str:
+        """Produce a URDF-safe link name from a raw CAD part name."""
+        name = name.replace(' ', '_')                       # spaces → _
+        name = re.sub(r'[<>()\[\]&#]', '', name)           # drop illegal chars
+        name = re.sub(r'_+', '_', name).strip('_')         # collapse __ runs
+        if name and name[0].isdigit():
+            name = 'link_' + name                          # can't start with digit
+        return name[:50] or 'part'                         # max 50 chars
+
     def _walk_assembly(self, shape_tool, labels: TDF_LabelSequence,
                        parent_name: Optional[str], parent_loc: TopLoc_Location):
         for i in range(1, labels.Length() + 1):
             label = labels.Value(i)
-            name = self._get_name(label) or f"part_{len(self.parts)}"
+            raw  = self._get_name(label) or f"part_{len(self.parts)}"
+            name = self._sanitize_part_name(raw)
 
             # Get this component's location and compose with parent
             comp_loc = shape_tool.GetLocation(label)

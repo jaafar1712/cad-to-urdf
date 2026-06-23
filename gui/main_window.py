@@ -116,6 +116,8 @@ class AnalysisWorker(QObject):
                 'tmp_dir':         tmp_dir,
             })
 
+        except ValueError as e:
+            self.error.emit(f"Validation Error\n\n{e}")
         except Exception as e:
             import traceback
             self.error.emit(f"{e}\n\n{traceback.format_exc()}")
@@ -173,6 +175,8 @@ class ExportWorker(QObject):
             self.progress.emit(100, 'Export complete!')
             self.finished.emit(pkg_path)
 
+        except ValueError as e:
+            self.error.emit(f"Validation Error\n\n{e}")
         except Exception as e:
             import traceback
             self.error.emit(f"{e}\n\n{traceback.format_exc()}")
