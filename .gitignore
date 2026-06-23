@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# CAD2URDF project-specific
+cad2urdf.log
+test_output/
+test_arm.step

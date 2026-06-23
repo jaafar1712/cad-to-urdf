@@ -1,0 +1,9 @@
+pythonocc-core==7.7.2
+PyQt5==5.15.10
+pyvista==0.43.0
+pyvistaqt==0.11.0
+trimesh==4.3.2
+numpy==1.26.4
+lxml==5.2.1
+scipy==1.13.0
+loguru==0.7.2
