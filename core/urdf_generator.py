@@ -4,11 +4,19 @@ Produces valid ROS 2 URDF with visual meshes, collision meshes, and
 calibrated inertial properties.
 """
 import os
+import re
 from typing import List, Dict
 
 from lxml import etree
 
 from utils.logger import get_logger
+
+
+def _safe_mesh_name(name: str) -> str:
+    """Same transformation applied in main_window._safe_filename — keeps mesh
+    references in sync with the actual files written to disk."""
+    safe = re.sub(r'[<>:"/\\|?*#\s]+', '_', name)
+    return safe.strip('._') or 'part'
 
 log = get_logger(__name__)
 
@@ -66,8 +74,9 @@ class URDFGenerator:
         visual = etree.SubElement(link, 'visual')
         v_geom = etree.SubElement(visual, 'geometry')
         v_mesh = etree.SubElement(v_geom, 'mesh')
+        safe = _safe_mesh_name(d['name'])
         v_mesh.set('filename',
-                   f'package://{pkg}/meshes/visual/{d["name"]}.dae')
+                   f'package://{pkg}/meshes/visual/{safe}.dae')
         v_mesh.set('scale', '1 1 1')
 
         # --- Collision ---
@@ -75,7 +84,7 @@ class URDFGenerator:
         c_geom = etree.SubElement(col, 'geometry')
         c_mesh = etree.SubElement(c_geom, 'mesh')
         c_mesh.set('filename',
-                   f'package://{pkg}/meshes/collision/{d["name"]}.stl')
+                   f'package://{pkg}/meshes/collision/{safe}.stl')
         c_mesh.set('scale', '1 1 1')
 
         # --- Inertial ---

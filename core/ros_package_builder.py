@@ -4,9 +4,17 @@ Generates a complete, buildable ROS 2 package directory containing:
 with package.xml, CMakeLists.txt, and launch files.
 """
 import os
+import re
 import shutil
 from typing import List
 from utils.logger import get_logger
+
+
+def _safe_pkg_name(name: str) -> str:
+    """ROS 2 package names: lowercase letters, digits, underscores only."""
+    safe = re.sub(r'[^a-z0-9_]', '_', name.lower())
+    safe = re.sub(r'_+', '_', safe).strip('_')
+    return safe or 'robot'
 
 log = get_logger(__name__)
 
@@ -23,6 +31,7 @@ class ROSPackageBuilder:
         Assemble the complete ROS 2 package.
         Returns the path to the created package directory.
         """
+        package_name = _safe_pkg_name(package_name)
         pkg_dir = os.path.join(output_dir, package_name)
 
         for sub in ['urdf', 'meshes/visual', 'meshes/collision',
