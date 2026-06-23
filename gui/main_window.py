@@ -308,8 +308,12 @@ class MainWindow(QMainWindow):
         first_name = self._analysis_result['parts'][0]['name'] \
             if self._analysis_result['parts'] else 'my_robot'
 
+        import re as _re
+        _safe = _re.sub(r'[^a-z0-9_]', '_', first_name.lower())
+        _safe = _re.sub(r'_+', '_', _safe).strip('_') or 'robot'
+
         dlg = ExportDialog(
-            default_name=first_name.lower().replace(' ', '_'),
+            default_name=_safe,
             parent=self,
         )
         if dlg.exec_() != dlg.Accepted:
