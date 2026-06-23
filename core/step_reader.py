@@ -186,6 +186,27 @@ class StepReader:
             it.Next()
         return ""
 
+    @staticmethod
+    def load_whole_shape(filepath: str):
+        """
+        Return the entire STEP file as one OCC compound shape using the simple
+        STEPControl reader (not XDE).  Used for the 3D preview only — the simple
+        reader handles the full assembly placement hierarchy internally, so the
+        result is guaranteed to be in correct world-space positions without any
+        manual location-composition logic.
+        Returns None on failure.
+        """
+        from OCC.Core.STEPControl import STEPControl_Reader
+        from OCC.Core.IFSelect import IFSelect_RetDone
+        try:
+            reader = STEPControl_Reader()
+            if reader.ReadFile(filepath) == IFSelect_RetDone:
+                reader.TransferRoots()
+                return reader.OneShape()
+        except Exception as e:
+            log.warning(f"load_whole_shape failed: {e}")
+        return None
+
     def get_bounding_box(self, shape) -> Dict:
         box = Bnd_Box()
         brepbndlib_Add(shape, box)

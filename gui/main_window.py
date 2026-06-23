@@ -51,7 +51,7 @@ class AnalysisWorker(QObject):
 
     def run(self):
         try:
-            from core.step_reader      import StepReader
+            from core.step_reader       import StepReader
             from core.topology_explorer import TopologyExplorer
             from core.joint_detector    import JointDetector
             from core.inertia_calculator import InertiaCalculator
@@ -80,7 +80,7 @@ class AnalysisWorker(QObject):
                 link.update(inertia)
                 links.append(link)
 
-            self.progress.emit(80, 'Generating preview meshes…')
+            self.progress.emit(80, 'Exporting part meshes…')
             exporter = MeshExporter()
             tmp_dir = tempfile.mkdtemp(prefix='cad2urdf_')
             vis_dir  = os.path.join(tmp_dir, 'visual')
@@ -88,8 +88,7 @@ class AnalysisWorker(QObject):
             os.makedirs(vis_dir);  os.makedirs(col_dir)
 
             import trimesh
-            preview_meshes = []
-            visual_paths   = []
+            visual_paths    = []
             collision_paths = []
             for p in parts:
                 safe = _safe_filename(p['name'])
@@ -99,21 +98,32 @@ class AnalysisWorker(QObject):
                 exporter.export_collision_stl(p['shape'], stl)
                 visual_paths.append(dae)
                 collision_paths.append(stl)
-                try:
-                    preview_meshes.append(trimesh.load(stl))
-                except Exception:
-                    preview_meshes.append(None)
+
+            # Build a single whole-assembly preview mesh via the simple STEP
+            # reader — bypasses XDE location-composition and is guaranteed
+            # to show all parts in their correct assembled positions.
+            self.progress.emit(92, 'Building 3D preview…')
+            preview_assembly = None
+            try:
+                whole = StepReader.load_whole_shape(self.filepath)
+                if whole is not None:
+                    prev_stl = os.path.join(tmp_dir, '_preview_.stl')
+                    mesh = exporter._tessellate(whole, 0.05, 0.3)
+                    mesh.export(prev_stl, file_type='stl')
+                    preview_assembly = trimesh.load(prev_stl)
+            except Exception as prev_err:
+                log.warning(f"Assembly preview failed: {prev_err}")
 
             self.progress.emit(100, 'Analysis complete.')
             self.finished.emit({
-                'parts':           parts,
-                'links':           links,
-                'joints':          joints,
-                'topos':           topos,
-                'preview_meshes':  preview_meshes,
-                'visual_paths':    visual_paths,
-                'collision_paths': collision_paths,
-                'tmp_dir':         tmp_dir,
+                'parts':             parts,
+                'links':             links,
+                'joints':            joints,
+                'topos':             topos,
+                'preview_assembly':  preview_assembly,
+                'visual_paths':      visual_paths,
+                'collision_paths':   collision_paths,
+                'tmp_dir':           tmp_dir,
             })
 
         except ValueError as e:
@@ -388,15 +398,11 @@ class MainWindow(QMainWindow):
         self._link_panel.populate(result['links'])
         self._joint_panel.populate(result['joints'])
 
-        # Update 3D viewer
+        # Update 3D viewer with single whole-assembly mesh
         try:
-            meshes = [m for m in result['preview_meshes'] if m is not None]
-            names  = [p['name'] for p, m in
-                      zip(result['parts'], result['preview_meshes'])
-                      if m is not None]
-            if hasattr(self._viewer, 'show_parts'):
-                self._viewer.show_parts(meshes, names)
-                self._viewer.show_joint_axes(result['joints'])
+            asm = result.get('preview_assembly')
+            if asm is not None and hasattr(self._viewer, 'show_assembly'):
+                self._viewer.show_assembly(asm, result['joints'])
         except Exception as e:
             log.warning(f"Viewer update failed: {e}")
 
