@@ -62,8 +62,8 @@ class MeshExporter:
 
         if len(mesh.faces) > self.COLLISION_MAX_FACES:
             original = len(mesh.faces)
-            mesh = mesh.simplify_quadric_decimation(self.COLLISION_MAX_FACES)
-            log.debug(f"Decimated {original} → {len(mesh.faces)} faces")
+            mesh = self._decimate(mesh, self.COLLISION_MAX_FACES)
+            log.debug(f"Decimated {original} -> {len(mesh.faces)} faces")
 
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         mesh.export(output_path, file_type='stl')
@@ -159,5 +159,36 @@ class MeshExporter:
         mesh.fix_normals()
         mesh.remove_duplicate_faces()
         mesh.remove_unreferenced_vertices()
+
+        return mesh
+
+    def _decimate(self, mesh: trimesh.Trimesh, target_faces: int) -> trimesh.Trimesh:
+        """Decimate mesh to target face count. Tries quadric (open3d/pymeshlab)
+        first; falls back to voxel clustering which needs no extra deps."""
+        try:
+            result = mesh.simplify_quadric_decimation(target_faces)
+            if len(result.faces) > 0:
+                return result
+        except Exception:
+            pass
+
+        # Voxel-clustering fallback — always available in trimesh
+        try:
+            pitch = mesh.extents.max() / (target_faces ** 0.33)
+            result = mesh.voxelized(pitch).marching_cubes
+            if len(result.faces) > 0:
+                return result
+        except Exception:
+            pass
+
+        # Last resort: uniform face subset
+        if len(mesh.faces) > target_faces:
+            keep = np.linspace(0, len(mesh.faces) - 1, target_faces, dtype=int)
+            result = trimesh.Trimesh(
+                vertices=mesh.vertices,
+                faces=mesh.faces[keep],
+                process=False,
+            )
+            return result
 
         return mesh
