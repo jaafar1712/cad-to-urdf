@@ -98,7 +98,7 @@ class TopologyExplorer:
             result['conical_faces'].append({
                 'apex':       cone.Apex(),
                 'axis_dir':   axis.Direction(),
-                'half_angle': cone.HalfAngle(),  # radians
+                'half_angle': cone.SemiAngle(),  # radians
                 'face':       face,
             })
 

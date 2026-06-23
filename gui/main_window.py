@@ -7,7 +7,15 @@ Layout:
   Bottom: Status bar with progress bar
 """
 import os
+import re
 import tempfile
+
+
+def _safe_filename(name: str) -> str:
+    """Strip/replace characters that are illegal in Windows filenames."""
+    safe = re.sub(r'[<>:"/\\|?*#\s]+', '_', name)
+    safe = safe.strip('._') or 'part'
+    return safe
 
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QSplitter,
@@ -84,8 +92,9 @@ class AnalysisWorker(QObject):
             visual_paths   = []
             collision_paths = []
             for p in parts:
-                dae = os.path.join(vis_dir,  f"{p['name']}.dae")
-                stl = os.path.join(col_dir,  f"{p['name']}.stl")
+                safe = _safe_filename(p['name'])
+                dae = os.path.join(vis_dir,  f"{safe}.dae")
+                stl = os.path.join(col_dir,  f"{safe}.stl")
                 exporter.export_visual_dae(p['shape'], dae)
                 exporter.export_collision_stl(p['shape'], stl)
                 visual_paths.append(dae)
