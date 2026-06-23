@@ -228,6 +228,11 @@ class MainWindow(QMainWindow):
         export_act.triggered.connect(self.export_package)
         file_menu.addAction(export_act)
 
+        validate_act = QAction('&Validate Package…', self)
+        validate_act.setShortcut(QKeySequence('Ctrl+Shift+V'))
+        validate_act.triggered.connect(self.validate_package)
+        file_menu.addAction(validate_act)
+
         file_menu.addSeparator()
         quit_act = QAction('&Quit', self)
         quit_act.setShortcut(QKeySequence.Quit)
@@ -337,6 +342,31 @@ class MainWindow(QMainWindow):
             joint_overrides,
             open_when_done=dlg.open_explorer,
         )
+
+    def validate_package(self):
+        """File → Validate Package…: parse a URDF package dir and show a report."""
+        pkg_dir = QFileDialog.getExistingDirectory(
+            self, 'Select ROS 2 Package Directory', '',
+            QFileDialog.ShowDirsOnly,
+        )
+        if not pkg_dir:
+            return
+
+        try:
+            from utils.urdf_validator import validate_package as _validate
+            result = _validate(pkg_dir)
+        except Exception as e:
+            QMessageBox.critical(self, 'Validator Error', str(e))
+            return
+
+        icon  = QMessageBox.Warning if not result['ok'] else QMessageBox.Information
+        title = ('Validation Failed' if result['n_fail'] > 0
+                 else 'Validation Passed' if result['n_warn'] == 0
+                 else 'Validation Passed with Warnings')
+
+        dlg = QMessageBox(icon, title, result['report'], parent=self)
+        dlg.setTextFormat(Qt.PlainText)
+        dlg.exec_()
 
     # ------------------------------------------------------------------
     # Background pipeline
