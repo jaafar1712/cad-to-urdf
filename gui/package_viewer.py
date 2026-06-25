@@ -115,6 +115,9 @@ class _URDFRenderer:
     def __init__(self, plotter: BackgroundPlotter):
         self._pl = plotter
 
+    # Virtual-only links — no geometry, skip placeholder box
+    _SKIP_LINKS = {'world', 'base_link_inertia'}
+
     def render(self, parsed: dict, meshes: dict,
                transforms: dict, q: dict = None):
         """
@@ -129,60 +132,93 @@ class _URDFRenderer:
         self._pl.clear()
         self._pl.set_background('#1a1a2e')
 
-        any_mesh = False
+        n_rendered = 0
         for idx, lk in enumerate(parsed['links']):
-            name      = lk['name']
-            T         = transforms.get(name, np.eye(4))
-            colour    = _LINK_COLOURS[idx % len(_LINK_COLOURS)]
-            mesh      = meshes.get(name)
+            name   = lk['name']
+            colour = _LINK_COLOURS[idx % len(_LINK_COLOURS)]
 
-            if mesh is not None and isinstance(mesh, trimesh.Trimesh) \
-                    and len(mesh.vertices) > 0:
-                pv_mesh = self._tm_to_pv(mesh, T)
-                if pv_mesh is not None:
-                    self._pl.add_mesh(
-                        pv_mesh, color=colour, opacity=1.0,
-                        smooth_shading=True, show_edges=False,
-                    )
-                    any_mesh = True
-            else:
-                # Fallback: draw a small coloured box at the link origin
-                box = pv.Box(bounds=(-0.02, 0.02, -0.02, 0.02, -0.02, 0.02))
-                box.transform(T)
-                self._pl.add_mesh(box, color=colour, opacity=0.6)
+            # Skip virtual reference frames — they have no geometry
+            if name in self._SKIP_LINKS:
+                continue
 
-        # Draw joint axes
+            T    = transforms.get(name, np.eye(4))
+            mesh = meshes.get(name)
+
+            try:
+                if mesh is not None and isinstance(mesh, trimesh.Trimesh) \
+                        and len(mesh.vertices) > 0:
+                    pv_mesh = self._tm_to_pv(mesh, T)
+                    if pv_mesh is not None:
+                        self._pl.add_mesh(
+                            pv_mesh, color=colour, opacity=1.0,
+                            smooth_shading=True, show_edges=False,
+                        )
+                        n_rendered += 1
+                else:
+                    # Fallback: small box at the link origin.
+                    # Build the box already at the world position so we never
+                    # call pv.PolyData.transform() — that API is deprecated in
+                    # recent PyVista and raises a Warning caught as Exception.
+                    c    = T[:3, 3]
+                    half = 0.025
+                    box  = pv.Box(bounds=(
+                        float(c[0]-half), float(c[0]+half),
+                        float(c[1]-half), float(c[1]+half),
+                        float(c[2]-half), float(c[2]+half),
+                    ))
+                    self._pl.add_mesh(box, color=colour, opacity=0.55)
+                    n_rendered += 1
+            except Exception as e:
+                log.warning(f"Could not render link '{name}': {e}")
+
+        # Joint-axis arrows
         for j in parsed['joints']:
             if j['type'] == 'fixed':
                 continue
-            parent_T = transforms.get(j['parent'], np.eye(4))
-            joint_T  = parent_T @ self._joint_local_T(j)
-            origin   = joint_T[:3, 3]
-            axis_dir = joint_T[:3, :3] @ np.array(j['axis'])
-            arrow    = pv.Arrow(
-                start=tuple(origin),
-                direction=tuple(axis_dir),
-                scale=0.04, tip_length=0.25,
-            )
-            colour_map = {
-                'revolute':   '#ff6b6b',
-                'prismatic':  '#4ecdc4',
-                'continuous': '#ffe66d',
-            }
-            arrow_color = colour_map.get(j['type'], '#aaaaaa')
-            self._pl.add_mesh(arrow, color=arrow_color, lighting=False)
+            try:
+                parent_T = transforms.get(j['parent'], np.eye(4))
+                joint_T  = parent_T @ self._joint_local_T(j)
+                origin   = joint_T[:3, 3]
+                axis_dir = joint_T[:3, :3] @ np.array(j['axis'])
+                # auto-scale arrow to 5% of scene size
+                try:
+                    b    = self._pl.bounds
+                    span = max(b[1]-b[0], b[3]-b[2], b[5]-b[4], 0.05)
+                    scale = span * 0.12
+                except Exception:
+                    scale = 0.05
+                arrow = pv.Arrow(
+                    start=tuple(origin.tolist()),
+                    direction=tuple(axis_dir.tolist()),
+                    scale=scale, tip_length=0.25,
+                )
+                colour_map = {
+                    'revolute':   '#ff6b6b',
+                    'prismatic':  '#4ecdc4',
+                    'continuous': '#ffe66d',
+                }
+                self._pl.add_mesh(
+                    arrow,
+                    color=colour_map.get(j['type'], '#aaaaaa'),
+                    lighting=False,
+                )
+            except Exception as e:
+                log.warning(f"Could not draw joint arrow '{j['name']}': {e}")
 
         # Ground grid
-        grid = pv.Plane(center=(0, 0, 0), direction=(0, 0, 1),
-                        i_size=2, j_size=2)
-        self._pl.add_mesh(grid, color='#2a2a3a', opacity=0.5)
+        try:
+            grid = pv.Plane(center=(0, 0, 0), direction=(0, 0, 1),
+                            i_size=2, j_size=2)
+            self._pl.add_mesh(grid, color='#2a2a3a', opacity=0.4)
+        except Exception:
+            pass
 
         self._pl.reset_camera()
         try:
-            b = self._pl.bounds
-            cx = (b[0]+b[1])/2; cy = (b[2]+b[3])/2; cz = (b[4]+b[5])/2
+            b    = self._pl.bounds
+            cx   = (b[0]+b[1])/2; cy = (b[2]+b[3])/2; cz = (b[4]+b[5])/2
             span = max(b[1]-b[0], b[3]-b[2], b[5]-b[4], 0.1)
-            d = span * 2.2
+            d    = span * 2.2
             self._pl.camera_position = [
                 (cx+d, cy+d*0.5, cz+d*0.9),
                 (cx, cy, cz),
@@ -190,6 +226,8 @@ class _URDFRenderer:
             ]
         except Exception:
             pass
+
+        return n_rendered
 
     @staticmethod
     def _joint_local_T(j: dict) -> np.ndarray:
@@ -616,19 +654,33 @@ class PackageViewerWindow(QMainWindow):
         total  = len(meshes)
         self._set_status(f'Rendering…  ({loaded}/{total} meshes loaded)')
 
+        n_rendered = 0
         try:
-            self._renderer.render(self._parsed, self._meshes, self._transforms)
+            n_rendered = self._renderer.render(
+                self._parsed, self._meshes, self._transforms
+            ) or 0
         except Exception as e:
-            log.error(traceback.format_exc())
-            self._set_status(f'Render error: {e}')
-            return
+            # Only abort for real errors, not DeprecationWarning / UserWarning
+            if isinstance(e, Warning):
+                log.warning(f"PyVista warning during render (non-fatal): {e}")
+            else:
+                log.error(traceback.format_exc())
+                self._set_status(f'Render error: {e}', '#f44336')
+                return
 
-        self._set_status(
-            f'Done.  {len(self._parsed["links"])} links, '
-            f'{len(self._parsed["joints"])} joints, '
-            f'{loaded}/{total} meshes.',
-            '#4caf50',
-        )
+        if n_rendered == 0 and loaded == 0:
+            self._set_status(
+                f'No meshes found in package — check that meshes/visual/ '
+                f'or meshes/collision/ contains .dae or .stl files.',
+                '#ff9800',
+            )
+        else:
+            self._set_status(
+                f'Done.  {len(self._parsed["links"])} links, '
+                f'{len(self._parsed["joints"])} joints, '
+                f'{loaded}/{total} meshes rendered.',
+                '#4caf50',
+            )
 
     def _on_error(self, msg: str):
         self._progress.setVisible(False)
@@ -654,9 +706,10 @@ class PackageViewerWindow(QMainWindow):
         transforms = compute_link_transforms(parsed)
         try:
             self._renderer.render(parsed, {}, transforms)
-            self._tabs.setCurrentIndex(0)   # show 3D view
         except Exception as e:
-            log.warning(f'Render error: {e}')
+            if not isinstance(e, Warning):
+                log.warning(f'Render error: {e}')
+        self._tabs.setCurrentIndex(0)   # switch to 3D view tab
 
         self._set_status(
             f'Parsed: robot="{parsed["robot_name"]}"  '
