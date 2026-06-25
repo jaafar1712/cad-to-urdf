@@ -362,6 +362,15 @@ class MainWindow(QMainWindow):
         validate_act.triggered.connect(self.validate_package)
         file_menu.addAction(validate_act)
 
+        viewer_act = QAction('Open &Package Viewer...', self)
+        viewer_act.setShortcut(QKeySequence('Ctrl+P'))
+        viewer_act.setToolTip(
+            'Open a ROS 2 package folder to preview the URDF '
+            'with 3D meshes, file tree, and structure'
+        )
+        viewer_act.triggered.connect(self.open_package_viewer)
+        file_menu.addAction(viewer_act)
+
         file_menu.addSeparator()
 
         clear_act = QAction('&Clear Temp Files', self)
@@ -553,6 +562,21 @@ class MainWindow(QMainWindow):
             f'Disk free: {free_now} MB.',
         )
         self._set_status(None, f'Temp files cleared — {free_now} MB free.')
+
+    def open_package_viewer(self, package_dir: str = None):
+        """File -> Open Package Viewer — opens the URDF / ROS 2 package viewer."""
+        from gui.package_viewer import PackageViewerWindow
+        if not package_dir:
+            package_dir = QFileDialog.getExistingDirectory(
+                self, 'Select ROS 2 Package Directory', '',
+                QFileDialog.ShowDirsOnly,
+            ) or None
+        viewer = PackageViewerWindow(package_dir=package_dir, parent=self)
+        viewer.show()
+        # keep a reference so it isn't garbage-collected
+        if not hasattr(self, '_package_viewers'):
+            self._package_viewers = []
+        self._package_viewers.append(viewer)
 
     def open_debug_report(self):
         """File -> Open Debug Report: open the session markdown in the default editor."""
