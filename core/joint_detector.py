@@ -72,6 +72,11 @@ class JointDetector:
     RADIUS_MATCH_TOL_M       = 0.003  # 3 mm — radii treated as equal
     PIN_IN_HOLE_RATIO_MIN    = 0.7    # smaller/larger radius > this → pin-in-hole
     PIN_IN_HOLE_RATIO_MAX    = 1.0
+    # Minimum shaft radius for a candidate joint cylinder.
+    # Screw/bolt holes are typically M2–M4 (r = 1–2 mm); servo shafts and
+    # bearing bores are typically ≥ 3 mm.  Filtering here prevents the
+    # detector from treating a pair of aligned bolt holes as a revolute joint.
+    MIN_JOINT_RADIUS_M       = 0.003  # 3 mm
 
     # ------------------------------------------------------------------
     # Public API
@@ -86,8 +91,11 @@ class JointDetector:
         Determine the joint type between two parts from their topology data.
         Returns the highest-confidence DetectedJoint found.
         """
-        cyls_a = part_a_topo.get('cylindrical_faces', [])
-        cyls_b = part_b_topo.get('cylindrical_faces', [])
+        # Discard cylinders too small to be joint shafts (bolt holes etc.)
+        cyls_a = [c for c in part_a_topo.get('cylindrical_faces', [])
+                  if c['radius'] * 0.001 >= self.MIN_JOINT_RADIUS_M]
+        cyls_b = [c for c in part_b_topo.get('cylindrical_faces', [])
+                  if c['radius'] * 0.001 >= self.MIN_JOINT_RADIUS_M]
 
         best: Optional[DetectedJoint] = None
 
@@ -112,9 +120,10 @@ class JointDetector:
             )
             return best
 
-        # Default: FIXED
-        return self._make_fixed(part_a_name, part_b_name,
-                                part_a_topo, part_b_topo)
+        # No cylinder geometry matched — fall back to a revolute with a
+        # plausible axis.  'fixed' would be wrong for a robot-arm joint.
+        return self._make_revolute_fallback(part_a_name, part_b_name,
+                                            part_a_topo, part_b_topo)
 
     def detect_all_joints(self,
                           parts: List[dict],
@@ -254,11 +263,53 @@ class JointDetector:
         )
 
     # ------------------------------------------------------------------
-    # Fixed fallback
+    # Fallbacks
     # ------------------------------------------------------------------
 
+    def _make_revolute_fallback(self, name_a, name_b,
+                                topo_a, topo_b) -> DetectedJoint:
+        """
+        Used when no cylinder pair passes the radius / confidence filter.
+        Chooses the most prominent large cylinder from either part and uses
+        its axis; otherwise defaults to Y-axis (typical arm shoulder/elbow).
+        Origin is estimated from the largest planar face of the parent.
+        """
+        origin = (0.0, 0.0, 0.0)
+        planes_a = topo_a.get('planar_faces', [])
+        if planes_a:
+            pt = occ_pnt_to_np(planes_a[0]['origin']) * 0.001
+            origin = tuple(pt.tolist())
+
+        # Try to infer axis from the largest cylinder in either part
+        axis = (0.0, 1.0, 0.0)   # default: Y-axis (shoulder/elbow pitch)
+        all_cyls = (topo_a.get('cylindrical_faces', []) +
+                    topo_b.get('cylindrical_faces', []))
+        if all_cyls:
+            biggest = max(all_cyls, key=lambda c: c['radius'])
+            ax = occ_dir_to_np(biggest['axis_dir'])
+            if ax[2] < 0:
+                ax = -ax
+            axis = tuple(ax.tolist())
+
+        log.info(
+            f"Joint fallback (no matching cylinders): {name_a} → {name_b}  "
+            f"axis={tuple(f'{v:.2f}' for v in axis)}"
+        )
+        return DetectedJoint(
+            joint_type=JointType.REVOLUTE,
+            parent_link=name_a,
+            child_link=name_b,
+            origin_xyz=origin,
+            origin_rpy=(0.0, 0.0, 0.0),
+            axis_xyz=axis,
+            confidence=0.3,
+            evidence=(
+                "No cylinder pair matched radius/confidence thresholds — "
+                "defaulting to revolute with axis inferred from largest cylinder"
+            ),
+        )
+
     def _make_fixed(self, name_a, name_b, topo_a, topo_b) -> DetectedJoint:
-        # Estimate a reasonable origin from planar faces if available
         origin = (0.0, 0.0, 0.0)
         planes_a = topo_a.get('planar_faces', [])
         if planes_a:
@@ -273,5 +324,5 @@ class JointDetector:
             origin_rpy=(0.0, 0.0, 0.0),
             axis_xyz=(0.0, 0.0, 1.0),
             confidence=0.5,
-            evidence="No matching cylindrical face geometry found — defaulting to fixed joint",
+            evidence="Explicitly fixed joint",
         )

@@ -95,23 +95,8 @@ class AnalysisWorker(QObject):
             parts = AssemblyAnalyzer._deduplicate_names(parts)
             slog.step('Read STEP file', 'ok', f'{len(parts)} parts extracted')
 
-            # ── topology ────────────────────────────────────────────────
-            # Use placed_shape (world coords) for topology so cylinder axis
-            # directions are correctly expressed in the world/parent frame.
-            self.progress.emit(25, f'Analyzing topology ({len(parts)} parts)...')
-            explorer = TopologyExplorer()
-            topos    = [explorer.analyze_shape(p['shape']) for p in parts]
-            slog.step('Topology analysis', 'ok', f'{len(parts)} parts analyzed')
-
-            # ── joints ──────────────────────────────────────────────────
-            self.progress.emit(45, 'Detecting joints...')
-            detector = JointDetector()
-            joints   = detector.detect_all_joints(parts, topos)
-
-            # Override joint origins: use placement translations so joint
-            # frame = child part's prototype origin in parent-local coords.
-            # This fixes the double-transform caused by world-space cylinder
-            # midpoints being used as URDF parent-local joint offsets.
+            # ── World origin per part (needed for sorting AND joint offsets) ──
+            # Compute BEFORE topology so we can sort parts into kinematic order.
             part_world_origin = {}
             for p in parts:
                 loc = p.get('location')
@@ -126,6 +111,36 @@ class AnalysisWorker(QObject):
                     except Exception:
                         part_world_origin[p['name']] = (0.0, 0.0, 0.0)
 
+            # ── Sort parts base→tip by world Z ───────────────────────────────
+            # The STEP reader returns parts in STEP-file order which is NOT
+            # the kinematic order.  For a robot arm standing upright, the base
+            # has the lowest world-Z and the end-effector the highest.
+            # Sorting here means detect_all_joints builds the correct linear
+            # chain (parts[0]=base → parts[1] → … → parts[n-1]=tip).
+            parts.sort(key=lambda p: part_world_origin[p['name']][2])
+            base_name = parts[0]['name']
+            tip_name  = parts[-1]['name']
+            slog.step(
+                'Sort kinematic chain', 'ok',
+                f'base={base_name} (z={part_world_origin[base_name][2]:.3f}m)  '
+                f'tip={tip_name}   (z={part_world_origin[tip_name][2]:.3f}m)',
+            )
+
+            # ── topology ────────────────────────────────────────────────
+            # Use placed_shape (world coords) so cylinder axis directions are
+            # correctly expressed in the world/parent frame.
+            self.progress.emit(25, f'Analyzing topology ({len(parts)} parts)...')
+            explorer = TopologyExplorer()
+            topos    = [explorer.analyze_shape(p['shape']) for p in parts]
+            slog.step('Topology analysis', 'ok', f'{len(parts)} parts analyzed')
+
+            # ── joints ──────────────────────────────────────────────────
+            self.progress.emit(45, 'Detecting joints...')
+            detector = JointDetector()
+            joints   = detector.detect_all_joints(parts, topos)
+
+            # Override joint origins with placement-based relative translations
+            # so the link frame = child part's prototype origin in parent coords.
             for j in joints:
                 po = part_world_origin.get(j.parent_link, (0.0, 0.0, 0.0))
                 co = part_world_origin.get(j.child_link,  (0.0, 0.0, 0.0))
