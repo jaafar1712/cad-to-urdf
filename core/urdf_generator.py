@@ -136,17 +136,33 @@ class URDFGenerator:
     # Link builder
     # ------------------------------------------------------------------
 
+    # Default link colours — cycles through these for each link
+    _COLOURS = [
+        '0.70 0.70 0.75 1.0',   # light grey
+        '0.20 0.50 0.80 1.0',   # blue
+        '0.85 0.35 0.10 1.0',   # orange
+        '0.20 0.65 0.30 1.0',   # green
+        '0.75 0.20 0.20 1.0',   # red
+        '0.55 0.30 0.75 1.0',   # purple
+    ]
+
     def _add_link(self, robot, d: Dict, pkg: str):
         link = etree.SubElement(robot, 'link', name=d['name'])
 
         # --- Visual ---
         visual = etree.SubElement(link, 'visual')
+        safe = _safe_mesh_name(d['name'])
         v_geom = etree.SubElement(visual, 'geometry')
         v_mesh = etree.SubElement(v_geom, 'mesh')
-        safe = _safe_mesh_name(d['name'])
         v_mesh.set('filename',
                    f'package://{pkg}/meshes/visual/{safe}.dae')
         v_mesh.set('scale', '1 1 1')
+
+        # Material colour — rotates through the palette per link index
+        colour_idx = d.get('index', 0) % len(self._COLOURS)
+        mat = etree.SubElement(visual, 'material', name=f'{d["name"]}_mat')
+        col_el = etree.SubElement(mat, 'color')
+        col_el.set('rgba', self._COLOURS[colour_idx])
 
         # --- Collision ---
         col = etree.SubElement(link, 'collision')

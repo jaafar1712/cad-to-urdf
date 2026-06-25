@@ -96,6 +96,8 @@ class AnalysisWorker(QObject):
             slog.step('Read STEP file', 'ok', f'{len(parts)} parts extracted')
 
             # ── topology ────────────────────────────────────────────────
+            # Use placed_shape (world coords) for topology so cylinder axis
+            # directions are correctly expressed in the world/parent frame.
             self.progress.emit(25, f'Analyzing topology ({len(parts)} parts)...')
             explorer = TopologyExplorer()
             topos    = [explorer.analyze_shape(p['shape']) for p in parts]
@@ -105,22 +107,53 @@ class AnalysisWorker(QObject):
             self.progress.emit(45, 'Detecting joints...')
             detector = JointDetector()
             joints   = detector.detect_all_joints(parts, topos)
+
+            # Override joint origins: use placement translations so joint
+            # frame = child part's prototype origin in parent-local coords.
+            # This fixes the double-transform caused by world-space cylinder
+            # midpoints being used as URDF parent-local joint offsets.
+            part_world_origin = {}
+            for p in parts:
+                loc = p.get('location')
+                if loc is None or loc.IsIdentity():
+                    part_world_origin[p['name']] = (0.0, 0.0, 0.0)
+                else:
+                    try:
+                        t = loc.Transformation().TranslationPart()
+                        part_world_origin[p['name']] = (
+                            t.X() * 0.001, t.Y() * 0.001, t.Z() * 0.001
+                        )
+                    except Exception:
+                        part_world_origin[p['name']] = (0.0, 0.0, 0.0)
+
+            for j in joints:
+                po = part_world_origin.get(j.parent_link, (0.0, 0.0, 0.0))
+                co = part_world_origin.get(j.child_link,  (0.0, 0.0, 0.0))
+                j.origin_xyz = (
+                    co[0] - po[0],
+                    co[1] - po[1],
+                    co[2] - po[2],
+                )
+
             slog.step('Joint detection', 'ok', f'{len(joints)} joints detected')
 
             # ── inertia ─────────────────────────────────────────────────
+            # Use raw_shape (prototype-local coords) so CoM is expressed in
+            # the link's own frame, as the URDF <inertial><origin> requires.
             self.progress.emit(60, 'Calculating inertial properties...')
             calc  = InertiaCalculator()
             links = []
             clamped = 0
             for p in parts:
-                inertia = calc.calculate(p['shape'])
+                raw = p.get('raw_shape') or p['shape']
+                inertia = calc.calculate(raw)
                 if inertia.get('mass', 1.0) <= 1e-3 + 1e-9:
                     clamped += 1
                     slog.warning(
                         f"Part '{p['name']}' mass clamped to 1 g "
                         "(surface model — no solid volume)"
                     )
-                link = {'name': p['name']}
+                link = {'name': p['name'], 'index': p.get('index', 0)}
                 link.update(inertia)
                 links.append(link)
             status = 'warn' if clamped else 'ok'
@@ -128,6 +161,9 @@ class AnalysisWorker(QObject):
                       f'{clamped} part(s) with surface-only geometry' if clamped else '')
 
             # ── mesh export ─────────────────────────────────────────────
+            # Use raw_shape so mesh vertices are in prototype-local (link-local)
+            # coords.  Placed_shape has world-space vertices which causes a
+            # double-transform when Gazebo/RViz applies the link pose on top.
             self.progress.emit(80, 'Exporting part meshes...')
             exporter  = MeshExporter()
             tmp_dir   = tempfile.mkdtemp(prefix='cad2urdf_')
@@ -141,12 +177,13 @@ class AnalysisWorker(QObject):
             collision_paths = []
             failed_exports  = 0
             for p in parts:
-                safe = _safe_filename(p['name'])
-                dae  = os.path.join(vis_dir, f"{safe}.dae")
-                stl  = os.path.join(col_dir, f"{safe}.stl")
+                safe      = _safe_filename(p['name'])
+                dae       = os.path.join(vis_dir, f"{safe}.dae")
+                stl       = os.path.join(col_dir, f"{safe}.stl")
+                raw_shape = p.get('raw_shape') or p['shape']
                 try:
-                    exporter.export_visual_dae(p['shape'], dae)
-                    exporter.export_collision_stl(p['shape'], stl)
+                    exporter.export_visual_dae(raw_shape, dae)
+                    exporter.export_collision_stl(raw_shape, stl)
                 except OSError as e:
                     if e.errno == 28 or 'space' in str(e).lower():
                         msg = (
