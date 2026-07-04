@@ -29,6 +29,7 @@ class JointPanel(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._container = QWidget()
         self._vbox = QVBoxLayout(self._container)
         self._vbox.setAlignment(Qt.AlignTop)
@@ -75,9 +76,11 @@ class JointPanel(QWidget):
 
         # Limits row (only relevant for revolute/prismatic)
         row3 = QHBoxLayout()
-        row3.addWidget(QLabel('Limits (lower / upper):'))
+        row3.addWidget(QLabel('Limits (rad):'))
         lower_spin = self._spin(j.limit_lower, -2 * 3.14159, 2 * 3.14159)
         upper_spin = self._spin(j.limit_upper, -2 * 3.14159, 2 * 3.14159)
+        lower_spin.setToolTip('Lower limit')
+        upper_spin.setToolTip('Upper limit')
         row3.addWidget(lower_spin)
         row3.addWidget(upper_spin)
         layout.addLayout(row3)
@@ -87,14 +90,18 @@ class JointPanel(QWidget):
         row4.addWidget(QLabel('Effort (N·m):'))
         effort_spin = self._spin(j.effort, 0, 10000, decimals=1)
         row4.addWidget(effort_spin)
-        row4.addWidget(QLabel('Vel (rad/s):'))
-        vel_spin = self._spin(j.velocity, 0, 100, decimals=2)
-        row4.addWidget(vel_spin)
         layout.addLayout(row4)
+
+        row5 = QHBoxLayout()
+        row5.addWidget(QLabel('Velocity (rad/s):'))
+        vel_spin = self._spin(j.velocity, 0, 100, decimals=2)
+        row5.addWidget(vel_spin)
+        layout.addLayout(row5)
 
         # Evidence text
         ev_label = QLabel(f'<i>{j.evidence}</i>')
         ev_label.setWordWrap(True)
+        ev_label.setStyleSheet('color: #a6adc8; font-size: 10px;')
         layout.addWidget(ev_label)
 
         self._widgets[j.name] = {

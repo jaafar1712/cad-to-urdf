@@ -4,6 +4,7 @@ Saves PNG files to docs/screenshots/.
 """
 import sys, os
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
+os.environ["CAD2URDF_NO_3D"] = "1"   # VTK cannot create an OpenGL context offscreen
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import os
@@ -18,6 +19,9 @@ app = QApplication(sys.argv)
 app.setApplicationName("CAD2URDF")
 from PyQt5.QtGui import QFont
 app.setFont(QFont("Segoe UI", 9))
+
+from gui.theme import apply_theme
+apply_theme(app)
 
 from gui.main_window import MainWindow
 win = MainWindow()

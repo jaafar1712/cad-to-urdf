@@ -13,6 +13,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 
 from gui.main_window import MainWindow
+from gui.theme import apply_theme
 from utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -26,6 +27,8 @@ def main():
     # Crisp font
     font = QFont('Segoe UI', 9)
     app.setFont(font)
+
+    apply_theme(app)
 
     # High-DPI support
     app.setAttribute(Qt.AA_EnableHighDpiScaling, True)

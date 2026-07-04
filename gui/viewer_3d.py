@@ -5,7 +5,7 @@ Renders the whole assembly as a single mesh and overlays joint axes.
 import numpy as np
 
 import pyvista as pv
-from pyvistaqt import BackgroundPlotter
+from pyvistaqt import QtInteractor
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 
@@ -14,15 +14,17 @@ class Viewer3D(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._plotter: BackgroundPlotter = None
+        self._plotter: QtInteractor = None
         self._setup_ui()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self._plotter = BackgroundPlotter(show=False)
+        # QtInteractor is a plain embeddable widget (BackgroundPlotter wraps a
+        # whole QMainWindow with its own menu bar and a large minimum size).
+        self._plotter = QtInteractor(self)
         self._plotter.set_background('#1e1e2e')   # dark navy — good contrast
-        layout.addWidget(self._plotter.app_window)
+        layout.addWidget(self._plotter.interactor)
 
     # ------------------------------------------------------------------
     # Public API

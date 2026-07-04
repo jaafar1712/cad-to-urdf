@@ -34,6 +34,7 @@ from gui.assembly_tree_widget import AssemblyTreeWidget
 from gui.joint_panel import JointPanel
 from gui.link_panel import LinkPanel
 from gui.export_dialog import ExportDialog
+from gui.theme import icon, ACCENT, GREEN, YELLOW, TEAL, SUBTEXT
 
 from utils.logger import get_logger
 
@@ -348,6 +349,7 @@ class MainWindow(QMainWindow):
         self._thread          = None
         self._session_tmp_dir = None   # cleaned up when user opens a new file
         self._setup_menu()
+        self._setup_toolbar()
         self._setup_central()
         self._setup_statusbar()
 
@@ -360,35 +362,40 @@ class MainWindow(QMainWindow):
 
         file_menu = mb.addMenu('&File')
 
-        open_act = QAction('&Open CAD File...', self)
-        open_act.setShortcut(QKeySequence.Open)
-        open_act.triggered.connect(self.open_cad_file)
-        file_menu.addAction(open_act)
+        self._open_act = QAction(icon('fa5s.folder-open', ACCENT),
+                                 '&Open CAD File...', self)
+        self._open_act.setShortcut(QKeySequence.Open)
+        self._open_act.triggered.connect(self.open_cad_file)
+        file_menu.addAction(self._open_act)
 
         file_menu.addSeparator()
 
-        export_act = QAction('&Export ROS 2 Package...', self)
-        export_act.setShortcut(QKeySequence('Ctrl+E'))
-        export_act.triggered.connect(self.export_package)
-        file_menu.addAction(export_act)
+        self._export_act = QAction(icon('fa5s.box-open', GREEN),
+                                   '&Export ROS 2 Package...', self)
+        self._export_act.setShortcut(QKeySequence('Ctrl+E'))
+        self._export_act.triggered.connect(self.export_package)
+        file_menu.addAction(self._export_act)
 
-        validate_act = QAction('&Validate Package...', self)
-        validate_act.setShortcut(QKeySequence('Ctrl+Shift+V'))
-        validate_act.triggered.connect(self.validate_package)
-        file_menu.addAction(validate_act)
+        self._validate_act = QAction(icon('fa5s.check-circle', YELLOW),
+                                     '&Validate Package...', self)
+        self._validate_act.setShortcut(QKeySequence('Ctrl+Shift+V'))
+        self._validate_act.triggered.connect(self.validate_package)
+        file_menu.addAction(self._validate_act)
 
-        viewer_act = QAction('Open &Package Viewer...', self)
-        viewer_act.setShortcut(QKeySequence('Ctrl+P'))
-        viewer_act.setToolTip(
+        self._viewer_act = QAction(icon('fa5s.cube', TEAL),
+                                   'Open &Package Viewer...', self)
+        self._viewer_act.setShortcut(QKeySequence('Ctrl+P'))
+        self._viewer_act.setToolTip(
             'Open a ROS 2 package folder to preview the URDF '
             'with 3D meshes, file tree, and structure'
         )
-        viewer_act.triggered.connect(self.open_package_viewer)
-        file_menu.addAction(viewer_act)
+        self._viewer_act.triggered.connect(self.open_package_viewer)
+        file_menu.addAction(self._viewer_act)
 
         file_menu.addSeparator()
 
-        clear_act = QAction('&Clear Temp Files', self)
+        clear_act = QAction(icon('fa5s.broom', SUBTEXT),
+                            '&Clear Temp Files', self)
         clear_act.setShortcut(QKeySequence('Ctrl+Shift+C'))
         clear_act.setToolTip(
             'Delete mesh cache from the current session to free disk space'
@@ -396,21 +403,45 @@ class MainWindow(QMainWindow):
         clear_act.triggered.connect(self.clear_temp_files)
         file_menu.addAction(clear_act)
 
-        report_act = QAction('Open &Debug Report', self)
+        report_act = QAction(icon('fa5s.file-medical-alt', SUBTEXT),
+                             'Open &Debug Report', self)
         report_act.setShortcut(QKeySequence('Ctrl+Shift+R'))
         report_act.triggered.connect(self.open_debug_report)
         file_menu.addAction(report_act)
 
         file_menu.addSeparator()
-        quit_act = QAction('&Quit', self)
+        quit_act = QAction(icon('fa5s.sign-out-alt', SUBTEXT), '&Quit', self)
         quit_act.setShortcut(QKeySequence.Quit)
         quit_act.triggered.connect(QApplication.quit)
         file_menu.addAction(quit_act)
 
         help_menu = mb.addMenu('&Help')
-        about_act = QAction('&About', self)
+        about_act = QAction(icon('fa5s.info-circle', SUBTEXT), '&About', self)
         about_act.triggered.connect(self._show_about)
         help_menu.addAction(about_act)
+
+    def _setup_toolbar(self):
+        tb = self.addToolBar('Main')
+        tb.setMovable(False)
+        tb.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        tb.addAction(self._open_act)
+        tb.addSeparator()
+        tb.addAction(self._export_act)
+        tb.addAction(self._validate_act)
+        tb.addAction(self._viewer_act)
+        tb.addSeparator()
+
+        cam_act = QAction(icon('fa5s.video', SUBTEXT), 'Reset Camera', self)
+        cam_act.setToolTip('Reset the 3D view camera')
+        cam_act.triggered.connect(self._reset_camera)
+        tb.addAction(cam_act)
+
+    def _reset_camera(self):
+        try:
+            if hasattr(self._viewer, 'reset_camera'):
+                self._viewer.reset_camera()
+        except Exception:
+            pass
 
     def _setup_central(self):
         central = QWidget()
@@ -427,17 +458,21 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self._tree)
 
         try:
+            if os.environ.get('CAD2URDF_NO_3D'):
+                raise RuntimeError('3D viewer disabled (CAD2URDF_NO_3D set)')
             from gui.viewer_3d import Viewer3D
             self._viewer = Viewer3D()
         except Exception as e:
             log.warning(f"3D viewer unavailable: {e}")
             self._viewer = QLabel('3D viewer unavailable\n(pyvista not loaded)')
             self._viewer.setAlignment(Qt.AlignCenter)
-            self._viewer.setStyleSheet('background: #2d2d2d; color: white;')
+            self._viewer.setStyleSheet(
+                'background: #181825; color: #6c7086; font-size: 12pt;')
         splitter.addWidget(self._viewer)
 
         tabs = QTabWidget()
-        tabs.setMaximumWidth(340)
+        tabs.setMinimumWidth(320)
+        tabs.setMaximumWidth(380)
 
         self._link_panel = LinkPanel()
         self._link_panel.material_changed.connect(self._on_material_changed)
