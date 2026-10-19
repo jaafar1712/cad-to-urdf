@@ -7,3 +7,4 @@ numpy==1.26.4
 lxml==5.2.1
 scipy==1.13.0
 loguru==0.7.2
+qtawesome==1.4.2

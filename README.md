@@ -48,7 +48,7 @@ The export produces a complete package (`urdf/`, `meshes/`, `launch/`, `config/`
 |---|---|
 | **Input formats** | STEP (`.step`, `.stp`), IGES (`.iges`, `.igs`) |
 | **Assembly reading** | Full XDE hierarchy via pythonocc — preserves part names, sub-assemblies, transforms |
-| **Joint detection** | Automatic revolute / prismatic / fixed from cylindrical BRep face geometry |
+| **Joint detection** | Automatic revolute / prismatic from cylindrical BRep face geometry, with a low-confidence revolute fallback; any joint can be changed to fixed or continuous in the GUI |
 | **Confidence scoring** | 0–100 % confidence score + human-readable geometric evidence per joint |
 | **Inertial properties** | Mass, centre of mass, full 3×3 inertia tensor from GProp volume integration |
 | **Material library** | Steel, aluminium, ABS plastic, titanium, carbon fibre, brass, PLA |
@@ -71,7 +71,7 @@ cad2urdf/
 │   ├── step_reader.py           # STEP/IGES parser (pythonocc XDE)
 │   ├── assembly_analyzer.py     # Assembly tree builder
 │   ├── topology_explorer.py     # BRep face classification
-│   ├── joint_detector.py        # Revolute / prismatic / fixed detection
+│   ├── joint_detector.py        # Revolute / prismatic detection + fallback
 │   ├── axis_calculator.py       # Joint axis and frame computation
 │   ├── inertia_calculator.py    # Mass, CoM, inertia tensor
 │   ├── mesh_exporter.py         # DAE (visual) + STL (collision) export
@@ -183,7 +183,7 @@ python test_full_pipeline.py
 
 ## How Joint Detection Works
 
-The detector analyses the BRep topology of every part and compares cylindrical face geometry between adjacent links:
+The detector analyses the BRep topology of every part and compares cylindrical face geometry between consecutive parts of a single serial chain. Parts are first sorted by the height (world Z) of their placement, so the lowest part is the base and the highest is the tip; each part becomes the child of the one below it. Cylinders with a radius under 3 mm are ignored so that bolt and screw holes are not mistaken for joint shafts:
 
 ```
 REVOLUTE  — two parts share a collinear cylinder axis (same line in 3D)
@@ -194,11 +194,14 @@ REVOLUTE  — two parts share a collinear cylinder axis (same line in 3D)
 PRISMATIC — two parts share a parallel but non-collinear cylinder axis
              Confidence 65%
 
-FIXED     — no matching cylindrical geometry found (conservative default)
-             Confidence 50%
+FALLBACK  — no cylinder pair matched (or best match below 55%)
+             → REVOLUTE, Confidence 30%
+             Axis taken from the largest cylinder in either part
+             (Y-axis if neither part has one); origin from the
+             parent's first planar face
 ```
 
-Every joint card in the GUI shows the raw geometric evidence so you can verify or override the classification before export.
+Fixed joints are never produced automatically. Every joint card in the GUI shows the raw geometric evidence so you can verify or override the classification (revolute, continuous, prismatic or fixed) before export — check every 30% fallback joint in particular.
 
 ---
 
@@ -260,7 +263,7 @@ All 9 stages of `test_full_pipeline.py` pass on the included test geometry.
 
 ## Known Limitations
 
-- **Joint detection requires cylindrical geometry at the interface.** A revolute joint is only detected when both mating parts expose cylindrical faces along the same axis (pin through a hole). Parts joined by prismatic guides, keys, or splines without cylindrical faces will default to `fixed` — override them manually in the Joints panel.
+- **Joint detection requires cylindrical geometry at the interface.** A revolute joint is only detected when both mating parts expose cylindrical faces along the same axis (pin through a hole). Parts joined by prismatic guides, keys, or splines without cylindrical faces fall back to a 30% `revolute` joint with an inferred axis — review them and set the correct type (often `fixed`) in the Joints panel.
 - **STEP files without named parts** produce auto-generated names (`part_0`, `part_1`, …). Re-export from your CAD tool with descriptive component names for cleaner results.
 - **pythonocc-core requires Python ≤ 3.12** — install via conda-forge, not pip.
 - **The 3D viewer** requires an OpenGL-capable display. It falls back to a placeholder label in headless/CI environments.

@@ -27,6 +27,7 @@ class LinkPanel(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._container = QWidget()
         self._vbox = QVBoxLayout(self._container)
         self._vbox.setAlignment(Qt.AlignTop)
@@ -79,14 +80,14 @@ class LinkPanel(QWidget):
         info = QLabel(
             f'Ixx={ixx:.3e}  Iyy={iyy:.3e}  Izz={izz:.3e} kg·m²'
         )
-        info.setStyleSheet('color: gray; font-size: 10px;')
+        info.setStyleSheet('color: #a6adc8; font-size: 10px;')
         layout.addWidget(info)
 
         com = ld.get('center_of_mass', (0, 0, 0))
         com_label = QLabel(
             f'CoM: ({com[0]:.3f}, {com[1]:.3f}, {com[2]:.3f}) m'
         )
-        com_label.setStyleSheet('color: gray; font-size: 10px;')
+        com_label.setStyleSheet('color: #a6adc8; font-size: 10px;')
         layout.addWidget(com_label)
 
         self._widgets[ld['name']] = {

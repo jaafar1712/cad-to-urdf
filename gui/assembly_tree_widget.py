@@ -32,11 +32,12 @@ class AssemblyTreeWidget(QTreeWidget):
                 self.addTopLevelItem(item)
         self.expandAll()
 
-    def highlight_part(self, name: str, color: QColor = QColor(255, 200, 0)):
+    def highlight_part(self, name: str, color: QColor = None):
+        from gui.theme import ACCENT_DIM
+        color = color or QColor(ACCENT_DIM)
         for n, item in self._items.items():
-            item.setBackground(0, QBrush(
-                color if n == name else QColor(255, 255, 255)
-            ))
+            item.setBackground(0, QBrush(color) if n == name
+                               else QBrush(Qt.NoBrush))
 
     def _on_item_clicked(self, item, col):
         name = item.data(0, Qt.UserRole)
