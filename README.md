@@ -9,23 +9,23 @@ CAD2URDF is an open-source desktop application that reads your mechanical CAD as
 ## Screenshots
 
 ### Main Window
-Three-panel layout: assembly tree on the left, 3D preview in the centre, Links / Joints inspector on the right.
+A real 74-part robot assembly loaded from STEP: assembly tree on the left, 3D preview with the detected joint axes in the centre (red = revolute, teal = prismatic, yellow = continuous, grey = fixed), and the Links / Joints panels on the right.
 
 ![Main Window](docs/screenshots/01_main_window.png)
 
 ---
 
 ### Joints Inspector
-Every detected joint shows its type, confidence score, axis, limits, and the geometric evidence that triggered the classification. All fields are editable before export.
+Every detected joint shows its parent → child link, type, confidence score, limits, effort and velocity, plus the geometric evidence behind the classification. All fields are editable before export.
 
 ![Joints Panel](docs/screenshots/02_joints_panel.png)
 
 ---
 
-### Export Dialog
-Set the ROS 2 package name and output directory. The generated package drops straight into any `colcon` workspace.
+### Links Inspector
+Mass, material and inertia for every link, computed from the CAD solid.
 
-![Export Dialog](docs/screenshots/03_export_dialog.png)
+![Links Panel](docs/screenshots/03_links_panel.png)
 
 ---
 
@@ -35,10 +35,10 @@ Set the ROS 2 package name and output directory. The generated package drops str
 
 ---
 
-### Generated URDF Output
-Calibrated inertia tensors, mesh references, joint axes, and limits — all auto-generated.
+### Generated ROS 2 Package
+The export produces a complete package (`urdf/`, `meshes/`, `launch/`, `config/`, `worlds/`, `package.xml`, `CMakeLists.txt`) that drops straight into a `colcon` workspace.
 
-![URDF Output](docs/screenshots/05_urdf_output.png)
+![ROS 2 Package](docs/screenshots/05_ros2_package.png)
 
 ---
 
